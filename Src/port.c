@@ -2,20 +2,21 @@
 #include "main.h"
 
 
-#define P0_CP_LOW()         GPIOB->BSRR = GPIO_BSRR_BR10
-#define P0_CP_HIGH()        GPIOB->BSRR = GPIO_BSRR_BS10
+#define P0_CP_LOW()                 GPIOB->BSRR = GPIO_BSRR_BR10
+#define P0_CP_HIGH()                GPIOB->BSRR = GPIO_BSRR_BS10
 
-#define P1_CP_LOW()         GPIOB->BSRR = GPIO_BSRR_BR2
-#define P1_CP_HIGH()        GPIOB->BSRR = GPIO_BSRR_BS2
+#define P1_CP_LOW()                 GPIOB->BSRR = GPIO_BSRR_BR2
+#define P1_CP_HIGH()                GPIOB->BSRR = GPIO_BSRR_BS2
 
-#define P2_EN_LOW()         GPIOB->BSRR = GPIO_BSRR_BR1
-#define P2_EN_HIGH()        GPIOB->BSRR = GPIO_BSRR_BS1
+#define P2_EN_LOW()                 GPIOB->BSRR = GPIO_BSRR_BR1
+#define P2_EN_HIGH()                GPIOB->BSRR = GPIO_BSRR_BS1
 
-#define P3_EN_LOW()         GPIOB->BSRR = GPIO_BSRR_BR0
-#define P3_EN_HIGH()        GPIOB->BSRR = GPIO_BSRR_BS0
+#define P3_EN_LOW()                 GPIOB->BSRR = GPIO_BSRR_BR0
+#define P3_EN_HIGH()                GPIOB->BSRR = GPIO_BSRR_BS0
 
-#define DATA_WRITE(data)    GPIOA->ODR = (GPIOA->ODR & 0xFF00) | data
-#define DATA_READ()         GPIOA->IDR & 0x00FF
+#define LAST_VALUE(arr, out_port)   arr[(out_port >> 2) & 1]
+#define DATA_WRITE(data)            GPIOA->ODR = (GPIOA->ODR & 0xFF00) | data
+#define DATA_READ()                 GPIOA->IDR & 0x00FF
 
 
 void port_init(void)
@@ -55,19 +56,45 @@ static void port_set_dir_in()
 
 
 void port_write(out_port_t out_port, uint8_t value)
-{    
+{
+    static uint8_t port_lv[2] = { 0 };
+    
+    switch(out_port)
+    {
+    case PORT0_4_LOW:
+    case PORT1_4_LOW:
+        value = (value & 0x0F) | (LAST_VALUE(port_lv, out_port) & 0xF0);
+        break;
+        
+    case PORT0_4_HIGH:
+    case PORT1_4_HIGH:
+        value = (value & 0xF0) | (LAST_VALUE(port_lv, out_port) & 0x0F);
+        break;
+    
+    case PORT0_8:
+    case PORT1_8:
+        break;
+    }
+    
     DATA_WRITE(value);
+    LAST_VALUE(port_lv, out_port) = value;
     port_set_dir_out();
     
-    if (out_port == PORT0)
+    switch(out_port)
     {
+    case PORT0_4_LOW:
+    case PORT0_4_HIGH:
+    case PORT0_8:
         P0_CP_HIGH();
         P0_CP_LOW();
-    }
-    else if(out_port == PORT1)
-    {
+        break;
+        
+    case PORT1_4_LOW:
+    case PORT1_4_HIGH:
+    case PORT1_8:
         P1_CP_HIGH();
         P1_CP_LOW();
+        break;
     }
     
     port_set_dir_in();
@@ -78,17 +105,54 @@ uint8_t port_read(in_port_t in_port)
 {
     uint8_t value = 0;
     
-    if (in_port == PORT2)
+    switch(in_port)
+    {
+    case PORT2_4_LOW:
+    case PORT2_4_HIGH:
+    case PORT2_8:
         P2_EN_LOW();
-    else if (in_port == PORT3)
+        break;
+    
+    case PORT3_4_LOW:
+    case PORT3_4_HIGH:
+    case PORT3_8:
         P3_EN_LOW();
+        break;
+    }
     
     value = DATA_READ();
     
-    if (in_port == PORT2)
+    switch(in_port)
+    {
+    case PORT2_4_LOW:
+    case PORT2_4_HIGH:
+    case PORT2_8:
         P2_EN_HIGH();
-    else if (in_port == PORT3)
+        break;
+    
+    case PORT3_4_LOW:
+    case PORT3_4_HIGH:
+    case PORT3_8:
         P3_EN_HIGH();
+        break;
+    }
+    
+    switch(in_port)
+    {
+    case PORT2_4_LOW:
+    case PORT3_4_LOW:
+        value &= 0x0F;
+        break;
+        
+    case PORT2_4_HIGH:
+    case PORT3_4_HIGH:
+        value &= 0xF0;
+        break;
+    
+    case PORT2_8:
+    case PORT3_8:
+        break;
+    }
     
     return value;
 }
@@ -100,12 +164,28 @@ out_port_t port_get_out_port(uint8_t raw)
     
     switch (raw)
     {
-    case 0:
-        res = PORT0;
+    case (0 << 2) | 1:
+        res = PORT0_4_LOW;
         break;
     
-    case 1:
-        res = PORT1;
+    case (0 << 2) | 2:
+        res = PORT0_4_HIGH;
+        break;
+    
+    case (0 << 2) | 3:
+        res = PORT0_8;
+        break;
+        
+    case (1 << 2) | 1:
+        res = PORT1_4_LOW;
+        break;
+    
+    case (1 << 2) | 2:
+        res = PORT1_4_HIGH;
+        break;
+    
+    case (1 << 2) | 3:
+        res = PORT1_8;
         break;
     
     default:
@@ -122,12 +202,28 @@ in_port_t port_get_in_port(uint8_t raw)
     
     switch (raw)
     {
-    case 2:
-        res = PORT2;
+    case (2 << 2) | 1:
+        res = PORT2_4_LOW;
         break;
     
-    case 3:
-        res = PORT3;
+    case (2 << 2) | 2:
+        res = PORT2_4_HIGH;
+        break;
+    
+    case (2 << 2) | 3:
+        res = PORT2_8;
+        break;
+        
+    case (3 << 2) | 1:
+        res = PORT3_4_LOW;
+        break;
+    
+    case (3 << 2) | 2:
+        res = PORT3_4_HIGH;
+        break;
+    
+    case (3 << 2) | 3:
+        res = PORT3_8;
         break;
     
     default:
